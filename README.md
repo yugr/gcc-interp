@@ -6,9 +6,9 @@ Example usage:
 $ cat hello.c
 #include <stdio.h>
 int main() {
-  printf("Hello world!\\n");
+  printf("Hello world!\n");
   return 0;
-  }
+}
 
 # Insert "shebang"
 $ gcci -i hello.c
