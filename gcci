@@ -1,0 +1,163 @@
+#!/usr/bin/python3
+
+# Copyright 2019 Yury Gribov
+# 
+# Use of this source code is governed by MIT license that can be
+# found in the LICENSE.txt file.
+#
+# A GCC "interpreter" script.
+
+import sys
+import os
+import stat
+import os.path
+import re
+import subprocess
+import argparse
+import tempfile
+import atexit
+
+me = os.path.basename(__file__)
+me_full = os.path.realpath(__file__)
+v = [0]
+
+def warn(msg):
+  sys.stderr.write('%s: warning: %s\n' % (me, msg))
+
+def error(msg):
+  sys.stderr.write('%s: error: %s\n' % (me, msg))
+  sys.exit(1)
+
+def run(args, **kwargs):
+  """A dummy wrapper to avoid deadlocks with subprocess.PIPE."""
+  if 'abort_on_error' in kwargs:
+    abort_on_error = kwargs['abort_on_error']
+    del kwargs['abort_on_error']
+  else:
+    abort_on_error = False
+  out_file = tempfile.mktemp()
+  err_file = tempfile.mktemp()
+  with open(out_file, 'w') as out_fileno, open(err_file, 'w') as err_fileno:
+    p = subprocess.Popen(args, stdout=out_fileno, stderr=err_fileno, **kwargs)
+    p.communicate()
+  with open(out_file, 'r') as f:
+    out = f.read()
+  os.unlink(out_file)
+  with open(err_file, 'r') as f:
+    err = f.read()
+  os.unlink(err_file)
+  if p.returncode != 0 and abort_on_error:
+    error("subprocess failed: %s\nStdout:\n%s\nStderr:\n%s" % (" ".join(args), out, err))
+  return p, out, err
+
+def main():
+  parser = argparse.ArgumentParser(description="A helper script to run C/C++ files as scripts.",
+                                   formatter_class=argparse.RawDescriptionHelpFormatter,
+                                   epilog="""\
+Examples:
+  $ cat hello.c
+  #include <stdio.h>
+  int main() {{
+    printf("Hello world!\\n");
+    return 0;
+  }}
+  $ python {0} -i hello.c
+  $ ./hello.c
+  Hello world!
+""".format(me))
+  parser.add_argument('--instrument', '-i',
+                      help="Insert \"shebang\" and make file executable "
+                           "so that it can be run as script.",
+                      dest='instrument', action='store_true', default=False)
+  parser.add_argument('--absolute', '-a',
+                      help="Use absolute path to 'gcci' script "
+                           "(so that it does not have to be added to PATH).",
+                      action='store_true', default=False)
+  parser.add_argument('--compiler', '-c',
+                      help="Override compiler (default is gcc for C files and g++ for C++ ones).")
+  parser.add_argument('--compiler-flags',
+                      help="Flags to use during compilation.",
+                      default='-Wall -Wextra -O2')
+  parser.add_argument('--verbose', '-v',
+                      help="Print diagnostic info (can be specified more than once).",
+                      action='count', default=0)
+  parser.add_argument('file',
+                      help="First positional argument.", metavar='FILE')
+  parser.add_argument('rest',
+                      help="FILE's arguments.",
+                      nargs=argparse.REMAINDER, default=[])
+
+  args = parser.parse_args()
+
+  if not os.path.exists(args.file):
+    error("file '%s' not found" % args.file)
+
+  if args.verbose:
+    v[0] = args.verbose
+  else:
+    v[0] = int(os.getenv('GCCI_VERBOSE', '0'))
+
+  if args.instrument:
+    if args.rest:
+      error("spurious input arguments are ignored during instrumentation: %s"
+            % ' '.join(args.rest))
+
+    with open(args.file, 'rb') as f:
+      first_line_raw = f.readline()
+      first_line = first_line_raw.decode('ascii')
+      contents_raw = f.read()
+      if re.match(r'///.*\bgcci ', first_line):
+        # First line is already a shebang, replace it
+        pass
+      else:
+        contents_raw = first_line_raw + contents_raw
+      ending = '\r\n' if '\r' in first_line else '\n'
+
+    with open(args.file, 'wb') as f:
+      gcci_path = me_full if args.absolute else me
+      f.write('///bin/true; {} "$0" "$*"; exit $?{}'
+              .format(gcci_path, ending)
+              .encode('ascii'))
+      f.write(contents_raw)
+
+    st = os.stat(args.file)
+    os.chmod(args.file, st.st_mode | stat.S_IEXEC)
+
+    print("Instrumented file '%s'." % args.file)
+
+    return 0
+
+  if args.compiler:
+    compiler = args.compiler
+  else:
+    _, ext = os.path.splitext(args.file)
+    if ext in ('.c', '.i'):
+      compiler = 'gcc'
+    elif ext in ('.C', '.cpp', '.cp', '.cxx', '.c++', '.ii'):
+      compiler = 'g++'
+    else:
+      error("unable to determine compiler for extension '%s', use --compiler to select one"
+            % ext)
+
+  # TODO: cache
+
+  exe_file = tempfile.mktemp() + '.exe'
+  atexit.register(lambda: os.unlink(exe_file))
+
+  cmd = [compiler, '-o', exe_file, args.file] + args.compiler_flags.split(' ')
+  if v[0]:
+    sys.stderr.write("Compiling '%s'..." % (' '.join(cmd)))
+  p, out, err = run(cmd)
+  if p.returncode != 0:
+    error("compilation of '%s' failed:\n%s" % (args.file, err))
+  if out and v[0]:
+    sys.stdout.write(out)
+  if err:
+    sys.stderr.write(err)
+
+  p = subprocess.Popen([exe_file] + args.rest)
+  p.communicate()
+  return p.returncode
+
+if __name__ == '__main__':
+  sys.exit(main())
