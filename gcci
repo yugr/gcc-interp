@@ -19,7 +19,6 @@ import atexit
 
 me = os.path.basename(__file__)
 me_full = os.path.realpath(__file__)
-v = [0]
 
 def warn(msg):
   sys.stderr.write('%s: warning: %s\n' % (me, msg))
@@ -51,6 +50,8 @@ def run(args, **kwargs):
   return p, out, err
 
 def main():
+  cflags = '-Wall -Wextra -O2'
+
   parser = argparse.ArgumentParser(description="A helper script to run C/C++ files as scripts.",
                                    formatter_class=argparse.RawDescriptionHelpFormatter,
                                    epilog="""\
@@ -75,11 +76,13 @@ Examples:
                       action='store_true', default=False)
   parser.add_argument('--compiler', '-c',
                       help="Override compiler (default is gcc for C files and g++ for C++ ones).")
-  parser.add_argument('--compiler-flags',
-                      help="Flags to use during compilation.",
-                      default='-Wall -Wextra -O2')
+  parser.add_argument('--cflags', '-f',
+                      help="Flags to use during compilation "
+                           "(can also be overriden with GCCI_CFLAGS).",
+                      default=None)
   parser.add_argument('--verbose', '-v',
-                      help="Print diagnostic info (can be specified more than once).",
+                      help="Print diagnostic info (can be specified more than once, "
+                           "can also be specified with GCCI_VERBOSE).",
                       action='count', default=0)
   parser.add_argument('file',
                       help="First positional argument.", metavar='FILE')
@@ -89,13 +92,18 @@ Examples:
 
   args = parser.parse_args()
 
+  if args.cflags is not None:
+    cflags = args.cflags
+  elif os.getenv('GCCI_CFLAGS', None) is not None:
+    cflags = os.getenv('GCCI_CFLAGS')
+
   if not os.path.exists(args.file):
     error("file '%s' not found" % args.file)
 
   if args.verbose:
-    v[0] = args.verbose
+    v = args.verbose
   else:
-    v[0] = int(os.getenv('GCCI_VERBOSE', '0'))
+    v = int(os.getenv('GCCI_VERBOSE', '0'))
 
   if args.instrument:
     if args.rest:
@@ -115,8 +123,8 @@ Examples:
 
     with open(args.file, 'wb') as f:
       gcci_path = me_full if args.absolute else me
-      f.write('///bin/true; {} "$0" "$*"; exit $?{}'
-              .format(gcci_path, ending)
+      f.write('///bin/true; {gcci} --cflags="{cflags}" "$0" "$*"; exit $?{ending}'
+              .format(gcci=gcci_path, cflags=cflags, ending=ending)
               .encode('ascii'))
       f.write(contents_raw)
 
@@ -144,13 +152,13 @@ Examples:
   exe_file = tempfile.mktemp() + '.exe'
   atexit.register(lambda: os.unlink(exe_file))
 
-  cmd = [compiler, '-o', exe_file, args.file] + args.compiler_flags.split(' ')
-  if v[0]:
+  cmd = [compiler, '-o', exe_file, args.file] + cflags.split(' ')
+  if v:
     sys.stderr.write("Compiling '%s'..." % (' '.join(cmd)))
   p, out, err = run(cmd)
   if p.returncode != 0:
     error("compilation of '%s' failed:\n%s" % (args.file, err))
-  if out and v[0]:
+  if out and v:
     sys.stdout.write(out)
   if err:
     sys.stderr.write(err)
