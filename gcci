@@ -123,7 +123,7 @@ Examples:
 
     with open(args.file, 'wb') as f:
       gcci_path = me_full if args.absolute else me
-      f.write('///bin/true; {gcci} --cflags="{cflags}" "$0" "$*"; exit $?{ending}'
+      f.write('///bin/true; {gcci} --cflags="{cflags}" "$0" "$@"; exit $?{ending}'
               .format(gcci=gcci_path, cflags=cflags, ending=ending)
               .encode('ascii'))
       f.write(contents_raw)
@@ -154,7 +154,7 @@ Examples:
 
   cmd = [compiler, '-o', exe_file, args.file] + cflags.split(' ')
   if v:
-    sys.stderr.write("Compiling '%s'..." % (' '.join(cmd)))
+    sys.stderr.write("Compiling %s...\n" % cmd)
   p, out, err = run(cmd)
   if p.returncode != 0:
     error("compilation of '%s' failed:\n%s" % (args.file, err))
@@ -163,7 +163,10 @@ Examples:
   if err:
     sys.stderr.write(err)
 
-  p = subprocess.Popen([exe_file] + args.rest)
+  cmd = [exe_file] + args.rest
+  if v:
+    sys.stderr.write("Running %s...\n" % cmd)
+  p = subprocess.Popen(cmd)
   p.communicate()
   return p.returncode
 
