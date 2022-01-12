@@ -140,14 +140,14 @@ Examples:
   else:
     _, ext = os.path.splitext(args.file)
     if ext in ('.c', '.i'):
-      compiler = 'gcc'
+      compiler = 'cc'
     elif ext in ('.C', '.cpp', '.cp', '.cxx', '.c++', '.ii'):
-      compiler = 'g++'
+      compiler = 'c++'
     else:
       error("unable to determine compiler for extension '%s', use --compiler to select one"
             % ext)
 
-  # TODO: cache
+  # TODO: cache?
 
   exe_file = tempfile.mktemp() + '.exe'
   atexit.register(lambda: os.unlink(exe_file))
