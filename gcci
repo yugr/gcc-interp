@@ -62,7 +62,9 @@ Examples:
     printf("Hello world!\\n");
     return 0;
   }}
-  $ python {0} -i hello.c
+  $ python {0} hello.c
+  Hello world!
+  $ python3 {0} -i hello.c
   $ ./hello.c
   Hello world!
 """.format(me))

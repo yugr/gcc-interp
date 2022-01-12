@@ -19,6 +19,12 @@ $ ./hello.c
 Hello world!
 ```
 
+You can also execute without instrumentation:
+```
+$ gcci hello.c
+Hello world!
+```
+
 If you get `gcci: command not found` error in last line, you need to add `gcci` to `PATH`
 or use absolute path instead:
 ```
