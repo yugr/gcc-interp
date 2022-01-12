@@ -2,6 +2,9 @@
 (actually hiding it).  Most importantly, modified file still remains
 a valid C code and can be compiled by normal means.
 
+Self-executable C code is particularly useful when you make
+a library of small examples/snippets.
+
 Example usage:
 ```
 $ cat hello.c
