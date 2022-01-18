@@ -82,9 +82,6 @@ Examples:
                       help="Flags to use during compilation "
                            "(can also be overriden with GCCI_CFLAGS).",
                       default=None)
-  parser.add_argument('--assemble', '-S',
-                      help="Dump asm instead of running.",
-                      action='store_true', default=False)
   parser.add_argument('--verbose', '-v',
                       help="Print diagnostic info (can be specified more than once, "
                            "can also be specified with GCCI_VERBOSE).",
@@ -101,9 +98,6 @@ Examples:
     cflags = args.cflags
   elif os.getenv('GCCI_CFLAGS', None) is not None:
     cflags = os.getenv('GCCI_CFLAGS')
-
-  if args.assemble:
-    cflags += ' -S'
 
   if not os.path.exists(args.file):
     error("file '%s' not found" % args.file)
@@ -129,11 +123,10 @@ Examples:
         contents_raw = first_line_raw + contents_raw
       ending = '\r\n' if '\r' in first_line else '\n'
 
-    S = '-S' if args.assemble else ''
-
     with open(args.file, 'wb') as f:
       gcci_path = me_full if args.absolute else me
-      f.write(f'///bin/true; {gcci_path} {S} --cflags="{cflags}" "$0" "$@"; exit $?{ending}'
+      f.write('///bin/true; {gcci} --cflags="{cflags}" "$0" "$@"; exit $?{ending}'
+              .format(gcci=gcci_path, cflags=cflags, ending=ending)
               .encode('ascii'))
       f.write(contents_raw)
 
@@ -157,25 +150,22 @@ Examples:
             % ext)
 
   # TODO: cache?
-  out_file = '-' if args.assemble else tempfile.mktemp() + '.exe'
-  if not args.assemble:
-    atexit.register(lambda: os.unlink(out_file))
 
-  cmd = [compiler, '-o', out_file, args.file] + cflags.split(' ')
+  exe_file = tempfile.mktemp() + '.exe'
+  atexit.register(lambda: os.unlink(exe_file))
+
+  cmd = [compiler, '-o', exe_file, args.file] + cflags.split(' ')
   if v:
     sys.stderr.write("Compiling %s...\n" % cmd)
   p, out, err = run(cmd)
   if p.returncode != 0:
     error("compilation of '%s' failed:\n%s" % (args.file, err))
-  if out and (args.assemble or v):
+  if out and v:
     sys.stdout.write(out)
   if err:
     sys.stderr.write(err)
 
-  if args.assemble:
-    return 0
-
-  cmd = [out_file] + args.rest
+  cmd = [exe_file] + args.rest
   if v:
     sys.stderr.write("Running %s...\n" % cmd)
   p = subprocess.Popen(cmd)
